@@ -12,6 +12,8 @@ import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Loader2, Upload, FileText, X } from "lucide-react"
 import { Label } from "@/components/ui/label"
+// Import the blob storage action at the top of the file
+import { processDocumentsWithGemini } from "@/app/actions/process-documents"
 import { uploadToBlob } from "@/app/actions/blob-storage"
 import { Progress } from "@/components/ui/progress"
 
@@ -55,67 +57,146 @@ export function OnboardingForm() {
     },
   })
 
-  // Update your onSubmit function to use the two-step approach
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  // Update the onSubmit function to use Vercel Blob
+  function onSubmit(values: z.infer<typeof formSchema>) {
     console.log("🔄 [Form] Starting form submission process...")
     setIsSubmitting(true)
     setProcessingStatus("Uploading documents...")
     setProcessingProgress(10)
 
-    try {
-      // Step 1: Upload documents to Blob
-      const uploadResult = await uploadDocuments(values.jobDescriptionFile, values.resumeFile)
+    // Simulate progress updates during the long-running operation
+    const progressInterval = setInterval(() => {
+      setProcessingProgress((prev) => {
+        if (prev < 90) {
+          // Update status message based on progress
+          if (prev === 10) {
+            console.log("🔄 [Form] Processing job description...")
+            setProcessingStatus("Processing job description...")
+          }
+          if (prev === 30) {
+            console.log("🔄 [Form] Analyzing resume...")
+            setProcessingStatus("Analyzing resume...")
+          }
+          if (prev === 50) {
+            console.log("🔄 [Form] Generating interview questions...")
+            setProcessingStatus("Generating interview questions...")
+          }
+          if (prev === 70) {
+            console.log("🔄 [Form] Preparing AI interviewer...")
+            setProcessingStatus("Preparing AI interviewer...")
+          }
 
-      if (!uploadResult.success) {
-        throw new Error("Failed to upload documents: " + uploadResult.error)
-      }
-
-      setProcessingStatus("Processing documents...")
-      setProcessingProgress(30)
-
-      // Step 2: Process documents in the background
-      const response = await fetch("/api/process", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jobDescUrl: uploadResult.jobDescUrl,
-          resumeUrl: uploadResult.resumeUrl,
-          firstName: values.firstName,
-          lastName: values.lastName,
-          companyName: values.companyName,
-        }),
+          return prev + 5
+        }
+        return prev
       })
+    }, 3000) // Update every 3 seconds
 
-      if (!response.ok) {
-        throw new Error("Processing failed with status: " + response.status)
-      }
+    console.log("🚀 [Form] Calling processDocumentsWithGemini...")
+    const processStartTime = Date.now()
 
-      const result = await response.json()
+    // Process the documents with Gemini
+    processDocumentsWithGemini(values.jobDescriptionFile, values.resumeFile)
+      .then(async (geminiResponseData) => {
+        const processDuration = Date.now() - processStartTime
+        console.log(`✅ [Form] Gemini processing completed in ${processDuration / 1000} seconds`)
 
-      if (!result.success) {
-        throw new Error("Processing failed: " + result.error)
-      }
+        setProcessingStatus("Storing interview data...")
+        setGeminiResponse(geminiResponseData)
 
-      // Store results in localStorage
-      localStorage.setItem("geminiResponseUrl", result.url)
-      localStorage.setItem("chatContext", JSON.stringify(result.contextData))
+        // Upload the Gemini response to Vercel Blob
+        console.log("🔄 [Form] Uploading Gemini response to Vercel Blob...")
+        const blobResult = await uploadToBlob(geminiResponseData, "gemini-response")
 
-      setProcessingProgress(100)
-      setProcessingStatus("Interview ready!")
+        if (!blobResult.success) {
+          // Check if it's an authentication error
+          if (blobResult.error && blobResult.error.includes("BLOB_READ_WRITE_TOKEN")) {
+            console.error("❌ [Form] Vercel Blob authentication error:", blobResult.error)
+            throw new Error("Vercel Blob is not properly configured. Please check your environment variables.")
+          } else {
+            throw new Error("Failed to upload to Vercel Blob: " + blobResult.error)
+          }
+        }
 
-      // Navigate to call page
-      setTimeout(() => router.push("/call"), 1000)
-    } catch (error) {
-      console.error("Error:", error)
-      setIsSubmitting(false)
+        clearInterval(progressInterval)
+        setProcessingProgress(100)
+        setProcessingStatus("Interview ready!")
 
-      // Handle specific errors
-      if (String(error).includes("timeout") || String(error).includes("504")) {
-        alert("The document processing is taking longer than expected. Please try with smaller documents.")
-      } else {
-        alert("An error occurred. Please try again later.")
-      }
-    }
+        // Safely store data in localStorage (only in browser)
+        if (typeof window !== "undefined") {
+          console.log("💾 [Form] Storing data in localStorage...")
+
+          // Store the Blob URL instead of the full response
+          localStorage.setItem("geminiResponseUrl", blobResult.url)
+
+          // Store context data
+          const contextData = {
+            name: `${values.firstName} ${values.lastName}`,
+            firstName: values.firstName,
+            companyName: values.companyName,
+          }
+
+          localStorage.setItem("chatContext", JSON.stringify(contextData))
+          console.log("✅ [Form] Data stored in localStorage")
+        }
+
+        // Short delay to show the "Interview ready!" message
+        console.log("⏳ [Form] Waiting before navigation...")
+        setTimeout(() => {
+          // Navigate to call page
+          console.log("🚀 [Form] Navigating to call page...")
+          router.push("/call")
+        }, 1000)
+      })
+      // Update the catch block to handle Blob errors with a fallback to localStorage
+      .catch((error) => {
+        console.error("❌ [Form] Error processing documents:", error)
+        clearInterval(progressInterval)
+
+        // If it's a Blob authentication error, try to use localStorage as fallback
+        if (error.message && error.message.includes("Vercel Blob")) {
+          console.warn("⚠️ [Form] Falling back to localStorage for storing Gemini response")
+
+          try {
+            // Check if the response is too large for localStorage
+            if (!geminiResponse) {
+              throw new Error("Gemini response is null or undefined.")
+            }
+            const responseSize = new TextEncoder().encode(geminiResponse).length
+            console.log(`📊 [Form] Response size: ${(responseSize / 1024).toFixed(2)} KB`)
+
+            if (responseSize > 5 * 1024 * 1024) {
+              // 5MB limit
+              throw new Error("Response too large for localStorage")
+            }
+
+            // Store in localStorage
+            localStorage.setItem("geminiResponse", geminiResponse)
+            localStorage.setItem("usingBlobStorage", "false")
+
+            // Store context data
+            const contextData = {
+              name: `${values.firstName} ${values.lastName}`,
+              firstName: values.firstName,
+              companyName: values.companyName,
+            }
+
+            localStorage.setItem("chatContext", JSON.stringify(contextData))
+            console.log("✅ [Form] Data stored in localStorage (fallback)")
+
+            // Navigate to call page
+            router.push("/call")
+            return
+          } catch (localStorageError) {
+            console.error("❌ [Form] Fallback to localStorage failed:", localStorageError)
+          }
+        }
+
+        setIsSubmitting(false)
+        setProcessingProgress(0)
+        // Show error message to user
+        alert("We're experiencing higher than normal server load. Please try again in a few minutes.")
+      })
   }
 
   const handleFileChange = (
@@ -305,33 +386,5 @@ export function OnboardingForm() {
       </form>
     </Form>
   )
-}
-
-async function uploadDocuments(
-  jobDescriptionFile: File,
-  resumeFile: File,
-): Promise<{ success: boolean; jobDescUrl?: string; resumeUrl?: string; error?: string }> {
-  try {
-    // Upload job description
-    const jobDescResult = await uploadToBlob(jobDescriptionFile, "job-descriptions")
-    if (!jobDescResult.success) {
-      return { success: false, error: "Failed to upload job description: " + jobDescResult.error }
-    }
-
-    // Upload resume
-    const resumeResult = await uploadToBlob(resumeFile, "resumes")
-    if (!resumeResult.success) {
-      return { success: false, error: "Failed to upload resume: " + resumeResult.error }
-    }
-
-    return {
-      success: true,
-      jobDescUrl: jobDescResult.url,
-      resumeUrl: resumeResult.url,
-    }
-  } catch (error: any) {
-    console.error("Upload error:", error)
-    return { success: false, error: "Upload failed: " + error.message }
-  }
 }
 

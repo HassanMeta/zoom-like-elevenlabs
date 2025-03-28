@@ -2,8 +2,6 @@
 
 import { GoogleGenerativeAI } from "@google/generative-ai"
 
-export const runtime = "edge" // Add this line to use Edge Runtime
-
 export async function processDocumentsWithGemini(jobDescFile: File, resumeFile: File) {
   console.log("🔄 [Gemini] Starting document processing...")
   console.log(`📄 [Gemini] Job description file size: ${(jobDescFile.size / 1024).toFixed(2)} KB`)
@@ -119,12 +117,12 @@ Ensure the expertise level of closed-ended questions is appropriately challengin
 
     // Call Gemini API with a longer timeout
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 25000) // Reduce to 25 seconds for Edge Runtime
+    const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minute timeout
 
     try {
       // Call Gemini API
       const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash", // Consider using a faster model if available
+        model: "gemini-2.5-pro-exp-03-25",
         generationConfig: {
           temperature: 2,
           topP: 0.95,
