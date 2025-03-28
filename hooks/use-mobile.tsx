@@ -1,0 +1,31 @@
+"use client"
+
+import { useEffect, useState } from "react"
+
+export function useMobile() {
+  const [isMobile, setIsMobile] = useState(false)
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+
+    const checkIfMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+
+    // Initial check
+    checkIfMobile()
+
+    // Add event listener
+    window.addEventListener("resize", checkIfMobile)
+
+    // Cleanup
+    return () => {
+      window.removeEventListener("resize", checkIfMobile)
+    }
+  }, [])
+
+  // Return false during server-side rendering
+  return isMounted ? isMobile : false
+}
+
