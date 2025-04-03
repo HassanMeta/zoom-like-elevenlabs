@@ -1,64 +1,111 @@
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import Link from "next/link"
-import { ArrowRight, Briefcase, Cpu, MessageSquare } from "lucide-react"
-import { Day0Logo } from "@/components/day0-logo"
+"use client"
 
-export default function Home() {
+import type React from "react"
+
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { Lock, Eye, EyeOff } from "lucide-react"
+
+// Secret code for authentication - you can share this with people for demo access
+const SECRET_CODE = "DAY0-DEMO-2025"
+
+export default function AuthPage() {
+  const [code, setCode] = useState("")
+  const [error, setError] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter()
+
+  // Check if already authenticated
+  useEffect(() => {
+    const isAuthenticated = localStorage.getItem("day0-auth")
+    if (isAuthenticated === "true") {
+      router.push("/dashboard")
+    }
+  }, [router])
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    setError("")
+
+    // Simulate network delay
+    setTimeout(() => {
+      if (code === SECRET_CODE) {
+        localStorage.setItem("day0-auth", "true")
+        router.push("/dashboard")
+      } else {
+        setError("Invalid access code. Please try again.")
+        setIsLoading(false)
+      }
+    }, 1000)
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-background to-secondary/20 p-4">
-      <Card className="w-full max-w-md shadow-lg border-opacity-50">
-        <CardHeader className="space-y-1">
-          <div className="flex items-center justify-center mb-6">
-            <Day0Logo className="scale-125" />
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+      <div className="w-full max-w-md">
+        <div className="bg-white shadow-lg rounded-lg overflow-hidden">
+          <div className="px-8 pt-8 pb-6 text-center">
+            <div className="inline-flex items-center justify-center h-20 w-20 mb-4">
+              <img src="/logo.png" alt="Day0 Recruit Logo" className="h-full w-full object-contain" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900">Day0 Recruit</h1>
+            <p className="mt-2 text-gray-600">Employee Performance Dashboard</p>
           </div>
-          <CardTitle className="text-center text-2xl">AI Recruitment Assistant</CardTitle>
-          <CardDescription className="text-center">
-            Streamline your candidate interviews with our AI-powered recruitment assistant
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="rounded-lg border bg-card p-4">
-            <h3 className="font-medium text-lg mb-3">Enterprise Features:</h3>
-            <ul className="space-y-3">
-              <li className="flex items-start">
-                <div className="mr-3 h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Briefcase className="h-3.5 w-3.5 text-primary" />
+
+          <div className="px-8 pb-8">
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">{error}</div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label htmlFor="code" className="block text-sm font-medium text-gray-700 mb-1">
+                  Access Code
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Lock className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="code"
+                    name="code"
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    className="block w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    placeholder="Enter access code"
+                  />
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="text-gray-400 hover:text-gray-500 focus:outline-none"
+                    >
+                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <span className="font-medium block text-sm">Structured Interviews</span>
-                  <span className="text-xs text-muted-foreground">Consistent candidate evaluation process</span>
-                </div>
-              </li>
-              <li className="flex items-start">
-                <div className="mr-3 h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Cpu className="h-3.5 w-3.5 text-primary" />
-                </div>
-                <div>
-                  <span className="font-medium block text-sm">AI-Powered Analysis</span>
-                  <span className="text-xs text-muted-foreground">Objective skill assessment and insights</span>
-                </div>
-              </li>
-              <li className="flex items-start">
-                <div className="mr-3 h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
-                  <MessageSquare className="h-3.5 w-3.5 text-primary" />
-                </div>
-                <div>
-                  <span className="font-medium block text-sm">Detailed Transcripts</span>
-                  <span className="text-xs text-muted-foreground">Complete record of every interview</span>
-                </div>
-              </li>
-            </ul>
+              </div>
+
+              <div>
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-50 transition-colors"
+                >
+                  {isLoading ? "Verifying..." : "Access Dashboard"}
+                </button>
+              </div>
+            </form>
+
+            <div className="mt-6 text-center text-sm text-gray-500">
+              <p>This is a restricted application. Please enter the access code provided to you.</p>
+            </div>
           </div>
-        </CardContent>
-        <CardFooter>
-          <Button asChild className="w-full">
-            <Link href="/onboarding">
-              Start Interview <ArrowRight className="ml-2 h-4 w-4" />
-            </Link>
-          </Button>
-        </CardFooter>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }
